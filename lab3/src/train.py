@@ -1,12 +1,14 @@
-from torch.optim import lr_scheduler
 import torch
 import torch.nn as nn
 from torch import optim
 import timeit
 from tqdm import tqdm
-from util import load_data
-from model import MyNet3, Alexnet
+from utils import load_data
+# from model import MyNet3, Alexnet
 import os
+import torch.nn.functional as F
+
+
 SEED = 42
 torch.manual_seed(SEED)
 # Hyper Parameters
@@ -17,7 +19,7 @@ BATCH_SIZE = 64
 # Model Parameters
 IN_CHANNELS = 3
 DROPOUT = 0.1
-NUM_CLASSES = 10
+NUM_CLASSES = 7
 
 LEARNING_RATE = 5e-4
 ADAM_WEIGHT_DECAY = 0
@@ -26,7 +28,7 @@ DATA_DIR = "./dataset/"
 SAVE_DIR = "./model/"
 
 
-def train(model=Alexnet(), data_dir=DATA_DIR, epochs=EPOCHS, batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE,
+def train(model, data_dir=DATA_DIR, epochs=EPOCHS, batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE,
           adam_weight_decay=ADAM_WEIGHT_DECAY, adam_betas=ADAM_BETAS, save_dir=SAVE_DIR):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(device)
@@ -38,7 +40,7 @@ def train(model=Alexnet(), data_dir=DATA_DIR, epochs=EPOCHS, batch_size=BATCH_SI
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), betas=adam_betas,
                            lr=learning_rate, weight_decay=adam_weight_decay)
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
+    # scheduler = lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
     start = timeit.default_timer()
     val_losses = []
 
@@ -101,7 +103,3 @@ def train(model=Alexnet(), data_dir=DATA_DIR, epochs=EPOCHS, batch_size=BATCH_SI
     torch.save(model.state_dict(), model_path)
     print(f"Training Time:{stop - start:.2f}s")
     return val_losses
-
-
-# batch_size = 64
-# val_losses = train(epochs=EPOCHS, batch_size=batch_size)
