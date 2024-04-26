@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from sklearn.metrics import roc_auc_score, f1_score, average_precision_score
+from sklearn.metrics import roc_auc_score
 from torch.optim.lr_scheduler import StepLR
 from torch_geometric.utils import negative_sampling
 from tqdm import tqdm
@@ -30,7 +30,7 @@ def negative_sample(train_data):
         edge_index=train_data.edge_index, num_nodes=train_data.num_nodes,
         num_neg_samples=train_data.edge_label_index.size(1), method='sparse')
 
-    # print(neg_edge_index.size(1))   # 3642条负边，即每次采样与训练集中正边数量一致的负边
+    # print(neg_edge_index.size(1))
     edge_label_index = torch.cat(
         [train_data.edge_label_index, neg_edge_index],
         dim=-1,
