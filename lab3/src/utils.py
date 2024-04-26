@@ -1,6 +1,18 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from torch_geometric.utils import negative_sampling, train_test_split_edges
+
+
+def visualize(out, color):
+    z = TSNE(n_components=2).fit_transform(out.detach().cpu().numpy())
+    plt.figure(figsize=(10, 10))
+    plt.xticks([])
+    plt.yticks([])
+    plt.scatter(z[:, 0], z[:, 1], s=70, c=color, cmap="Set2")
+    plt.show()
 
 
 def masked_loss(out, label, mask):

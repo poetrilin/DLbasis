@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from utils import sparse_dropout
+from torch.nn import init
 
 
 class PairNorm(nn.Module):
@@ -30,47 +33,37 @@ class DropEdge:
 
 
 class GraphConvolution(nn.Module):
-    def __init__(self, input_dim, output_dim, num_features_nonzero,
-                 dropout=0.,
-                 is_sparse_inputs=False,
-                 bias=False,
-                 activation=F.relu,
-                 featureless=False):
+    """
+    Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
+    """
+
+    def __init__(self, in_features, out_features, bias=True):
         super(GraphConvolution, self).__init__()
-
-        self.dropout = dropout
-        self.bias = bias
-        self.activation = activation
-        self.is_sparse_inputs = is_sparse_inputs
-        self.featureless = featureless
-        self.num_features_nonzero = num_features_nonzero
-
-        self.weight = nn.Parameter(torch.randn(input_dim, output_dim))
-        self.bias = None
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(
+            torch.FloatTensor(in_features, out_features))
         if bias:
-            self.bias = nn.Parameter(torch.zeros(output_dim))
-
-    def forward(self, inputs):
-        # print('inputs:', inputs)
-        x, support = inputs
-
-        if self.training and self.is_sparse_inputs:
-            x = sparse_dropout(x, self.dropout, self.num_features_nonzero)
-        elif self.training:
-            x = F.dropout(x, self.dropout)
-
-        # convolve
-        if not self.featureless:  # if it has features x
-            if self.is_sparse_inputs:
-                xw = torch.sparse.mm(x, self.weight)
-            else:
-                xw = torch.mm(x, self.weight)
+            self.bias = nn.Parameter(torch.FloatTensor(out_features))
         else:
-            xw = self.weight
+            self.register_parameter('bias', None)
+        self.reset_parameters()
 
-        out = torch.sparse.mm(support, xw)
-
+    def reset_parameters(self):
+        stdv = 1. / torch.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
         if self.bias is not None:
-            out += self.bias
+            self.bias.data.uniform_(-stdv, stdv)
 
-        return self.activation(out), support
+    def forward(self, input, adj):
+        support = torch.mm(input, self.weight)
+        output = torch.spmm(adj, support)
+        if self.bias is not None:
+            return output + self.bias
+        else:
+            return output
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+            + str(self.in_features) + ' -> ' \
+            + str(self.out_features) + ')'

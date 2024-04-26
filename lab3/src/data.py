@@ -1,71 +1,64 @@
 import torch
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch_geometric
-import torch_geometric.datasets
-from torch_geometric.transforms import NormalizeFeatures
+from torch_geometric.datasets import Planetoid
+from torch_geometric.data import Data
+import torch_geometric.transforms as T
+from torch_geometric.transforms import NormalizeFeatures, AddSelfLoops
+from torch_geometric.utils import negative_sampling
 import os
+from tqdm import tqdm
+from typing import Literal, Tuple
+
+Task = Literal["classification", "link_prediction"]
+Dataset = Literal["cora", "citeseer"]
 
 
-TRAIN_FLAG = 0
-VAL_FLAG = 1
-TEST_FLAG = 2
-DEFAULT_FLAG = 3
+def load_data(dataset_dir: str, *, name: Dataset = "cora",
+              transform: T = None, task: Task = "classification") -> Data:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    if task == "classification":
+        transform = T.Compose([
+            NormalizeFeatures(),
+            # AddSelfLoops(),
+            T.ToDevice(device),
+        ])
+    elif task == "link_prediction":
+        transform = T.Compose([
+            T.NormalizeFeatures(),
+            T.ToDevice(device),
+            T.RandomLinkSplit(num_val=0.1, num_test=0.1, is_undirected=True,
+                              add_negative_train_samples=False),
+        ])
+    dataset = Planetoid(dataset_dir, name, transform=transform)
+   # 应用变换
+    if transform is not None:
+        dataset.transform = transform
+    return dataset
 
 
-class Dataset(Dataset):
-    def __init__(self, path, flag=DEFAULT_FLAG, dataset_name='Cora'):
-        super(Dataset, self).__init__()
-        self.path = path
-        self.flag = flag
-        self.dataset_name = dataset_name
-        self.data, self.label = self.load_data()
+# transform = torch_geometric.transforms.Compose
+# ([NormalizeFeatures(), AddSelfLoops()])
 
-    def load_data(self):
-        if self.dataset_name == 'Cora':
-            dataset = torch_geometric.datasets.Planetoid(root=self.path,
-                                                         name='Cora', transform=NormalizeFeatures())[0]
-        elif self.dataset_name == 'Citeseer':
-            dataset = torch_geometric.datasets.Planetoid(root=self.path,
-                                                         name='Citeseer', transform=NormalizeFeatures())[0]
-        elif self.dataset_name == 'Pubmed':
-            dataset = torch_geometric.datasets.Planetoid(root=self.path,
-                                                         name='Pubmed', transform=NormalizeFeatures())[0]
-        else:
-            raise ValueError('Unknown dataset name.')
-        if self.flag == TRAIN_FLAG:
-            data = dataset.x[dataset.train_mask]
-            label = dataset.y[dataset.train_mask]
-        elif self.flag == VAL_FLAG:
-            data = dataset.x[dataset.val_mask]
-            label = dataset.y[dataset.val_mask]
-        elif self.flag == TEST_FLAG:
-            data = dataset.x[dataset.test_mask]
-            label = dataset.y[dataset.test_mask]
-        else:
-            data = dataset.x
-            label = dataset.y
-        return data, label
+# cur_dir = os.path.dirname(__file__)
+# dataset_dir = os.path.join(cur_dir, '../dataset/')
 
-    def __len__(self):
-        return len(self.label)
+# data = load_data(dataset_dir, transform=transform)
+# print(data)
 
-    def __getitem__(self, idx):
-        return self.data[idx]
+def negative_sample(data: Data) -> Tuple[torch.Tensor, torch.Tensor]:
+    # 从训练集中采样与正边相同数量的负边
+    neg_edge_index = negative_sampling(
+        edge_index=data.edge_index, num_nodes=data.num_nodes,
+        num_neg_samples=data.edge_label_index.size(1), method='sparse')
+    # print(neg_edge_index.size(1))
 
-    def get_data_loader(self, batch_size):
-        if self.flag == 3:
-            raise ValueError('flag should be 0, 1, 2.')
-        return DataLoader(self, batch_size=batch_size, shuffle=(self.flag == TRAIN_FLAG))
+    edge_label_index = torch.cat(
+        [data.edge_label_index, neg_edge_index],
+        dim=-1,
+    )
+    edge_label = torch.cat([
+        data.edge_label,
+        data.edge_label.new_zeros(neg_edge_index.size(1))
+    ], dim=0)
 
-    # batch_size = 16
-    # cur_dir = os.path.dirname(__file__)
-    # dataset_dir = os.path.join(cur_dir, '../dataset/')
-
-    # train_loader = CoraDataset(dataset_dir, TRAIN_FLAG).get_data_loader(batch_size)
-    # val_loader = CoraDataset(dataset_dir, VAL_FLAG).get_data_loader(batch_size)
-    # test_loader = CoraDataset(dataset_dir, TEST_FLAG).get_data_loader(batch_size)
-
-    # loader0 = next(iter(train_loader))
-    # print(loader0[0].shape)
+    return edge_label, edge_label_index
