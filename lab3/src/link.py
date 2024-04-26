@@ -1,21 +1,25 @@
 import numpy as np
 import torch
+import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 from torch.optim.lr_scheduler import StepLR
 from torch_geometric.utils import negative_sampling
+from torch_geometric.data import Data
 from tqdm import tqdm
 import copy
 from models import GCN_LP
 import os
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
-
+from typing import Tuple
+from utils import HistoryDict
+import timeit
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SEED = 42
 torch.manual_seed(SEED)
 
 
-def test(model, data):
+def test(model: nn.Module, data: Data) -> float:
     model.eval()
     with torch.no_grad():
         z = model.encode(data.x, data.edge_index)
@@ -24,7 +28,30 @@ def test(model, data):
     return roc_auc_score(data.edge_label.cpu().numpy(), out.cpu().numpy())
 
 
-def negative_sample(train_data):
+def train_link_step(model: nn.Module, data: Data, optimizer: torch.optim.Optimizer,
+                    criterion: torch.nn.Module) -> Tuple[float, float]:
+    model.train()
+    optimizer.zero_grad()
+    edge_label, edge_label_index = negative_sample(train_data=data)
+    out = model(data.x, data.edge_index, edge_label_index).view(-1)
+    loss = criterion(out, edge_label)
+    roc_score = roc_auc_score(edge_label.cpu().numpy(), out.cpu().numpy())
+    loss.backward()
+    optimizer.step()
+    return loss.item(), roc_score
+
+
+@torch.no_grad()
+def eval_link_step(model: nn.Module, data: Data, criterion: torch.nn.Module) -> Tuple[float, float]:
+    model.eval()
+    z = model.encode(data.x, data.edge_index)
+    out = model.decode(z, data.edge_label_index).view(-1).sigmoid()
+    loss = criterion(out, data.edge_label)
+    roc_score = roc_auc_score(data.edge_label.cpu().numpy(), out.cpu().numpy())
+    return loss.item(), roc_score
+
+
+def negative_sample(train_data: Data) -> Tuple[torch.Tensor, torch.Tensor]:
     # 从训练集中采样与正边相同数量的负边
     neg_edge_index = negative_sampling(
         edge_index=train_data.edge_index, num_nodes=train_data.num_nodes,
@@ -43,17 +70,27 @@ def negative_sample(train_data):
     return edge_label, edge_label_index
 
 
-def train(train_data, val_data, test_data, model=None):
+def train_link(model: nn.Module,
+               train_data: Data, val_data: Data, test_data: Data,
+               *,
+               max_epochs: int = 100,
+               verbose: bool = True,
+
+               ) -> HistoryDict:
+
     if model is None:
         model = GCN_LP(dataset.num_features, 128, 64).to(device)
 
     optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)
     criterion = torch.nn.BCEWithLogitsLoss().to(device)
+    history = {"loss": [], "val_loss": [], "metric": [], "val_metric": []}
+    start_time = timeit.default_timer()
+
     min_epochs = 10
     best_val_auc = 0
     final_test_auc = 0
     model.train()
-    for epoch in range(100):
+    for epoch in range(max_epochs):
         optimizer.zero_grad()
         edge_label, edge_label_index = negative_sample(train_data=train_data)
         out = model(train_data.x, train_data.edge_index,
@@ -71,7 +108,7 @@ def train(train_data, val_data, test_data, model=None):
         print('epoch {:03d} train_loss {:.8f} val_auc {:.4f} test_auc {:.4f}'
               .format(epoch, loss.item(), val_auc, test_auc))
 
-    return final_test_auc
+    return history
 
 
 cur_dir = os.path.dirname(__file__)
@@ -95,4 +132,5 @@ num_features = dataset.num_features
 
 model = GCN_LP(dataset.num_features, 128, 64).to(device)
 
-train(train_data, val_data, test_data, model=model)
+train_link(model=model, train_data=train_data,
+           val_data=val_data, test_data=test_data)
