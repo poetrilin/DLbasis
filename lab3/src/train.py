@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import timeit
-from tqdm import tqdm
 import os
 from models import GCN, GCN_LP
 from torch_geometric.data import Data
@@ -9,7 +8,6 @@ from typing import Callable, Tuple, Literal, Union
 from torch import Tensor
 import matplotlib.pyplot as plt
 from torch_geometric.datasets import Planetoid
-# import numpy as np
 from utils import plot_history, HistoryDict
 import numpy as np
 from sklearn.metrics import roc_auc_score
@@ -177,8 +175,8 @@ def train(
     return history
 
 
-# task = "classification"
-task = "link_prediction"
+task = "classification"
+# task = "link_prediction"
 dataset_name = "Cora"
 
 transform = None

@@ -15,7 +15,8 @@
 $$ 
 (f*h)_G = U[(U^Tx) \odot (U^Tg)] = Ug_{\theta}U^Tx 
 $$
-其中$g_{\theta}$=$diag(U^Tg)$
+其中$g_{\theta}=diag(U^Tg)$ ,在GCN中,用一阶Chebyshev多项式近似,i.e
+
 
 3. 链路负采样
 
