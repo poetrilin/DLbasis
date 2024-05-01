@@ -1,7 +1,21 @@
 from typing import List, Optional, TypedDict, Literal
 import matplotlib.pyplot as plt
+from torch_geometric.data import Data
 
 Task = Literal["classification", "link_prediction"]
+
+
+def re_split(data: Data, train_rate: float, val_rate: float) -> Data:
+    assert train_rate+val_rate < 1
+    test_rate = 1-train_rate-val_rate
+    data.train_mask.fill_(False)
+    data.val_mask.fill_(False)
+    data.test_mask.fill_(False)
+    data.train_mask[:int(data.num_nodes*train_rate)] = True
+    data.val_mask[int(data.num_nodes*train_rate)
+                      :int(data.num_nodes*(train_rate+val_rate))] = True
+    data.test_mask[int(data.num_nodes*(train_rate+val_rate)):] = True
+    return data
 
 
 class HistoryDict(TypedDict):

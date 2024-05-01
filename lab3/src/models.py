@@ -2,22 +2,45 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from modules import GraphConvolution
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, PairNorm
 from torch_geometric.data import Data
+import random
+
+
+def drop_edge(edge_index, keep_ratio: float = 1.):
+    num_keep = int(keep_ratio * edge_index.shape[1])
+    temp = [True] * num_keep + [False] * (edge_index.shape[1] - num_keep)
+    random.shuffle(temp)
+    return edge_index[:, temp]
 
 
 class GCN(nn.Module):
-    def __init__(self, num_node_features, num_classes, hidden_dims=16):
+    def __init__(self, num_node_features: int,
+                 num_classes: int, *, hidden_dims: int = 16, num_layers: int = 3,
+                 dropout: float = 0.1, use_pair_norm: bool = True, dropedge: float = 0):
         super(GCN, self).__init__()
         # self.conv1 = GraphConvolution(num_node_features, hidden_dims)
-        # self.conv2 = GraphConvolution(hidden_dims, num_classes)
-        self.conv1 = GCNConv(num_node_features, hidden_dims)
-        self.conv2 = GCNConv(hidden_dims, num_classes)
+        self.convs = torch.nn.ModuleList(
+            [GraphConvolution(num_node_features, hidden_dims)]
+            + [GCNConv(in_channels=hidden_dims, out_channels=hidden_dims)
+               for i in range(num_layers - 2)]
+        )
+        self.conv2 = GraphConvolution(hidden_dims, num_classes)
+        self.use_pairnorm = use_pair_norm
+        self.pairnorm = PairNorm()
+        self.Dropedge = dropedge
+        self.activation = nn.ReLU()
+        self.drop_edge = dropedge
 
     def forward(self, data: Data):
         x, edge_index = data.x, data.edge_index
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
+        for l in self.convs:
+            edges = drop_edge(edge_index, self.drop_edge)
+            x = l(x, edges)
+            if self.use_pairnorm:
+                x = self.pairnorm(x)
+            x = self.activation(x)
+
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index)
 
