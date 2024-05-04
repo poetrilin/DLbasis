@@ -21,7 +21,7 @@ class GCN(nn.Module):
         super(GCN, self).__init__()
         # self.conv1 = GraphConvolution(num_node_features, hidden_dims)
         self.convs = torch.nn.ModuleList(
-            [GraphConvolution(num_node_features, hidden_dims)]
+            [GraphConvolution(num_node_features, hidden_dims, drop_edge=False)]
             + [GCNConv(in_channels=hidden_dims, out_channels=hidden_dims)
                for i in range(num_layers - 2)]
         )
@@ -29,7 +29,7 @@ class GCN(nn.Module):
         self.use_pairnorm = use_pair_norm
         self.pairnorm = PairNorm()
         self.Dropedge = dropedge
-        self.activation = nn.ReLU()
+        self.activation = nn.Tanh()
         self.drop_edge = dropedge
 
     def forward(self, data: Data):
@@ -55,6 +55,7 @@ class GCN_LP(torch.nn.Module):
 
     def encode(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
+
         x = self.conv2(x, edge_index)
         return x
 

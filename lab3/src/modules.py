@@ -19,6 +19,7 @@ class GraphConvolution(nn.Module):
         normalize: bool = True,
         bias: bool = True,
         add_loops: bool = True,
+        drop_edge: bool = False
     ):
         super(GraphConvolution, self).__init__()
         self.in_channels = in_channels
@@ -26,7 +27,7 @@ class GraphConvolution(nn.Module):
         self.normalize = normalize
         self._cached_adj_t = None
         self.add_loops = add_loops
-
+        self.drop_edge = drop_edge
         self.lin = nn.Linear(in_channels, out_channels, bias=False)
         # 将lin的权重初始化为xavier
         init.xavier_uniform_(self.lin.weight)
@@ -64,7 +65,7 @@ class GraphConvolution(nn.Module):
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         """
-        根据edge_index计算邻接矩阵,如果在cache中有缓存则直接使用
+        根据edge_index计算邻接矩阵,如果在cache中有缓存则直接使用,注意开drop_edge时需要清空缓存
         """
         if self._cached_adj_t is None:
             self._cached_adj_t = self.edge2adj(
@@ -77,4 +78,6 @@ class GraphConvolution(nn.Module):
 
         if self.bias is not None:
             x = x + self.bias
+        if self.drop_edge:
+            self._cached_adj_t = None
         return x
